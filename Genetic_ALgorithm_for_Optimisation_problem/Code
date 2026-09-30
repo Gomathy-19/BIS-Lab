@@ -1,1 +1,157 @@
+import random
 
+
+STOCK_LENGTH = 100 # Length of the stock rod
+REQUIRED_PIECES = [20, 30, 25, 40, 15, 35] # List of piece lengths to cut
+
+class Individual:
+    def __init__(self, chromosome=None):
+        
+        if chromosome is None:
+            self.chromosome = list(range(len(REQUIRED_PIECES)))
+            random.shuffle(self.chromosome) # Start with a random order of pieces
+        else:
+            self.chromosome = chromosome
+
+        self.fitness = None # Fitness is calculated later
+
+    def __repr__(self):
+        return f"Individual(chromosome={self.chromosome}, fitness={self.fitness:.4f})"
+
+    def calculate_fitness(self):
+        num_rods_used = 1 # Start with one rod
+        current_rod_remaining = STOCK_LENGTH
+        total_waste = 0
+
+        if not REQUIRED_PIECES: # Handle empty required pieces list
+            self.fitness = 0.0
+            return
+
+        for piece_idx in self.chromosome:
+            piece_length = REQUIRED_PIECES[piece_idx]
+
+            if piece_length <= current_rod_remaining:
+                current_rod_remaining -= piece_length
+            else:
+                total_waste += current_rod_remaining # Add remaining length as waste for current rod
+                num_rods_used += 1
+                current_rod_remaining = STOCK_LENGTH - piece_length # Start new rod with current piece
+
+        total_waste += current_rod_remaining
+        denominator = total_waste + (num_rods_used * STOCK_LENGTH) + 1e-6
+        self.fitness = 1.0 / denominator
+
+
+class GeneticAlgorithm:
+    def __init__(self, population_size, mutation_rate, crossover_rate, max_generations, tournament_size=3):
+        self.population_size = population_size
+        self.mutation_rate = mutation_rate
+        self.crossover_rate = crossover_rate
+        self.max_generations = max_generations
+        self.tournament_size = tournament_size
+        self.population = []
+        self.best_individual = None
+
+    def _initialize_population(self):
+        self.population = [Individual() for _ in range(self.population_size)]
+
+    def _evaluate_fitness(self):
+        for individual in self.population:
+            individual.calculate_fitness()
+            if self.best_individual is None or individual.fitness > self.best_individual.fitness:
+                self.best_individual = individual
+
+    def _select(self, current_population):
+        candidates = random.sample(current_population, min(self.tournament_size, len(current_population)))
+        return max(candidates, key=lambda ind: ind.fitness)
+
+    def _crossover(self, parent1, parent2):
+        if random.random() < self.crossover_rate:
+            size = len(parent1.chromosome)
+            if size < 2:
+                return Individual(list(parent1.chromosome)), Individual(list(parent2.chromosome))
+
+            start, end = sorted(random.sample(range(size), 2))
+
+            offspring1_chromosome = [None] * size
+            offspring1_chromosome[start:end+1] = parent1.chromosome[start:end+1]
+
+            fill_pos = (end + 1) % size
+            for gene in parent2.chromosome:
+                if gene not in offspring1_chromosome:
+                    while offspring1_chromosome[fill_pos] is not None:
+                        fill_pos = (fill_pos + 1) % size
+                    offspring1_chromosome[fill_pos] = gene
+
+
+            offspring2_chromosome = [None] * size
+            offspring2_chromosome[start:end+1] = parent2.chromosome[start:end+1]
+
+            fill_pos = (end + 1) % size
+            for gene in parent1.chromosome:
+                if gene not in offspring2_chromosome:
+                    while offspring2_chromosome[fill_pos] is not None:
+                        fill_pos = (fill_pos + 1) % size
+                    offspring2_chromosome[fill_pos] = gene
+
+            return Individual(offspring1_chromosome), Individual(offspring2_chromosome)
+        else:
+            return Individual(list(parent1.chromosome)), Individual(list(parent2.chromosome))
+
+    def _mutate(self, individual):
+        if random.random() < self.mutation_rate:
+            chromosome = list(individual.chromosome) # Create a mutable copy
+            idx1, idx2 = random.sample(range(len(chromosome)), 2) # Pick two random indices
+            chromosome[idx1], chromosome[idx2] = chromosome[idx2], chromosome[idx1] # Swap them
+            individual.chromosome = chromosome
+        return individual
+
+    def _termination_condition(self, generation):
+        return generation >= self.max_generations
+
+    def run(self):
+        print("Starting Genetic Algorithm...")
+        self._initialize_population()
+        self._evaluate_fitness()
+
+        print(f"Initial Best Individual: {self.best_individual}")
+
+        for generation in range(self.max_generations):
+            if self._termination_condition(generation):
+                break
+
+            next_population = [] # Build the next generation here
+
+            while len(next_population) < self.population_size:
+                parent1 = self._select(self.population)
+                parent2 = self._select(self.population)
+
+                offspring1, offspring2 = self._crossover(parent1, parent2)
+
+                offspring1 = self._mutate(offspring1)
+                offspring2 = self._mutate(offspring2)
+
+                offspring1.calculate_fitness()
+                offspring2.calculate_fitness()
+
+                next_population.append(offspring1)
+                if len(next_population) < self.population_size:
+                    next_population.append(offspring2)
+
+            self.population = next_population # Replace old population with the new one
+            self._evaluate_fitness() # Re-evaluate and update best_individual from the new population
+
+            print(f"Generation {generation+1}: Best Fitness = {self.best_individual.fitness:.4f}")
+
+        print("\nGenetic Algorithm Finished.")
+        print(f"Best Individual Found: {self.best_individual}")
+        return self.best_individual
+
+ga = GeneticAlgorithm(
+    population_size=50,
+    mutation_rate=0.1,
+    crossover_rate=0.7,
+    max_generations=100
+)
+
+best_solution = ga.run()
