@@ -1,1 +1,91 @@
+import numpy as np
+import random
 
+
+TARGET_CUTOFF = 4000.0 
+
+R_BOUNDS = (100.0, 100000.0)
+C_BOUNDS = (1e-9, 10e-6)
+
+
+NUM_PARTICLES = 40
+MAX_ITERATIONS = 100
+W = 0.5   
+C1 = 1.5  
+C2 = 1.5  
+
+def compute_fitness(position):
+    
+    R, C = position[0], position[1]
+    
+   
+    if R <= 0 or C <= 0:
+        return float('inf')
+        
+    calculated_fc = 1.0 / (2.0 * np.pi * R * C)
+    error = abs(calculated_fc - TARGET_CUTOFF)
+    return error
+
+
+particles = np.zeros((NUM_PARTICLES, 2))
+velocities = np.zeros((NUM_PARTICLES, 2))
+
+for i in range(NUM_PARTICLES):
+    particles[i, 0] = random.uniform(*R_BOUNDS)
+    particles[i, 1] = random.uniform(*C_BOUNDS)
+    
+    velocities[i, 0] = random.uniform(-100, 100)
+    velocities[i, 1] = random.uniform(-1e-7, 1e-7)
+
+pbest_positions = np.copy(particles)
+pbest_fitnesses = np.array([compute_fitness(p) for p in particles])
+
+gbest_index = np.argmin(pbest_fitnesses)
+gbest_position = np.copy(pbest_positions[gbest_index])
+gbest_fitness = pbest_fitnesses[gbest_index]
+
+
+print(f"Optimizing RC low-pass filter for a target cutoff of {TARGET_CUTOFF} Hz...\n")
+
+for iteration in range(MAX_ITERATIONS):
+    for i in range(NUM_PARTICLES):
+        r1 = np.random.rand(2)
+        r2 = np.random.rand(2)
+        
+        velocities[i] = (W * velocities[i] + 
+                         C1 * r1 * (pbest_positions[i] - particles[i]) + 
+                         C2 * r2 * (gbest_position - particles[i]))
+        
+
+        particles[i] += velocities[i]
+        
+        particles[i, 0] = np.clip(particles[i, 0], R_BOUNDS[0], R_BOUNDS[1])
+        particles[i, 1] = np.clip(particles[i, 1], C_BOUNDS[0], C_BOUNDS[1])
+        
+        current_fitness = compute_fitness(particles[i])
+        
+        if current_fitness < pbest_fitnesses[i]:
+            pbest_fitnesses[i] = current_fitness
+            pbest_positions[i] = np.copy(particles[i])
+            
+
+            if current_fitness < gbest_fitness:
+                gbest_fitness = current_fitness
+                gbest_position = np.copy(particles[i])
+                
+    if (iteration + 1) % 20 == 0:
+        print(f"Iteration {iteration + 1}/{MAX_ITERATIONS} | Current Best Error: {gbest_fitness:.4f} Hz")
+
+
+
+opt_R = gbest_position[0]
+opt_C = gbest_position[1]
+final_fc = 1.0 / (2.0 * np.pi * opt_R * opt_C)
+
+print("\n================ DESIGN RESULTS ================")
+print(f"Optimized Resistor (R) : {opt_R:.2f} Ω")
+print(f"Optimized Capacitor (C): {opt_C * 1e6:.4f} µF ({opt_C * 1e9:.2f} nF)")
+print(f"Calculated Cutoff (Fc) : {final_fc:.2f} Hz")
+print(f"Target Cutoff          : {TARGET_CUTOFF:.2f} Hz")
+print(f"Absolute Deviation     : {gbest_fitness:.4f} Hz")
+print("================================================")
